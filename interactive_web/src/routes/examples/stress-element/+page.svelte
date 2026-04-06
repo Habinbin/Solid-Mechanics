@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as d3 from 'd3';
+	import katex from 'katex';
+
+	const k = (expr: string) =>
+		katex.renderToString(expr, { throwOnError: false, displayMode: false });
+	const kd = (expr: string) =>
+		katex.renderToString(expr, { throwOnError: false, displayMode: true });
 
 	// State variables for stresses
 	let sigma_x = $state(50);
@@ -49,7 +55,7 @@
 			type: 'normal' | 'shear'
 		) => {
 			const length = Math.sqrt(dx * dx + dy * dy);
-			if (length < 2) return; // Don't draw if stress is practically zero
+			if (length < 2) return;
 
 			const color = type === 'normal' ? '#ef4444' : '#3b82f6';
 			g.append('line')
@@ -76,9 +82,7 @@
 		if (Math.abs(sigma_y) > 0) {
 			const signY = Math.sign(sigma_y);
 			const lenY = arrowScale(Math.abs(sigma_y));
-			// Top face (taking up as negative y in SVG)
 			drawArrow(center.x, center.y - boxSize / 2, 0, -signY * lenY, 'normal');
-			// Bottom face
 			drawArrow(center.x, center.y + boxSize / 2, 0, signY * lenY, 'normal');
 		}
 
@@ -86,14 +90,9 @@
 		if (Math.abs(tau_xy) > 0) {
 			const signT = Math.sign(tau_xy);
 			const lenT = arrowScale(Math.abs(tau_xy));
-			// Right face (dy based on sign)
-			// Positive tau_xy on right face points up (-y in svg)
 			drawArrow(center.x + boxSize / 2, center.y, 0, -signT * lenT, 'shear');
-			// Left face (points down)
 			drawArrow(center.x - boxSize / 2, center.y, 0, signT * lenT, 'shear');
-			// Top face (points right)
 			drawArrow(center.x, center.y - boxSize / 2, signT * lenT, 0, 'shear');
-			// Bottom face (points left)
 			drawArrow(center.x, center.y + boxSize / 2, -signT * lenT, 0, 'shear');
 		}
 	}
@@ -113,7 +112,6 @@
 			.attr('fill', color);
 	}
 
-	// Redraw when stress states change
 	$effect(() => {
 		if (svgElement) {
 			drawElement();
@@ -122,33 +120,32 @@
 </script>
 
 <svelte:head>
-	<title>2D 응력 요소 (Stress Element) - Solid Mechanics</title>
+	<title>2D Stress Element - Solid Mechanics</title>
 </svelte:head>
 
-<div class="mx-auto max-w-5xl px-6 py-12">
+<div class="mx-auto max-w-7xl px-6 py-12">
 	<div class="mb-8">
 		<a href="/" class="text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
-			>← 돌아가기</a
+			>← Back to Dashboard</a
 		>
-		<h1 class="mt-4 text-4xl font-extrabold tracking-tight text-zinc-900">
-			2D 응력 요소 (Stress Element)
-		</h1>
+		<h1 class="mt-4 text-4xl font-extrabold tracking-tight text-zinc-900">2D Stress Element</h1>
 		<p class="mt-2 text-lg text-zinc-600">
-			미소 요소에 작용하는 수직 응력($\sigma$)과 전단 응력($\tau$)을 조작하여 내부 힘의 상태와 응력
-			텐서 매트릭스를 실시간으로 관찰합니다.
+			Manipulate normal ({@html k('\\sigma')}) and shear ({@html k('\\tau')}) stresses on an
+			infinitesimal element to observe the internal force equilibrium and stress tensor matrix in
+			real-time.
 		</p>
 	</div>
 
 	<div class="grid grid-cols-1 gap-12 lg:grid-cols-2">
 		<!-- Left: Controls -->
 		<div class="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-			<h2 class="mb-6 text-xl font-bold text-zinc-900">응력 제어 패널</h2>
+			<h2 class="mb-6 text-xl font-bold text-zinc-900">Stress Control Panel</h2>
 
 			<div class="space-y-8">
 				<div>
 					<div class="mb-2 flex items-center justify-between">
 						<label for="sigmax" class="block font-medium text-zinc-700"
-							>$\sigma_x$ (수직 응력 X)</label
+							>{@html k('\\sigma_x')} (Normal X)</label
 						>
 						<span class="text-sm font-semibold text-red-500">{sigma_x} MPa</span>
 					</div>
@@ -161,15 +158,15 @@
 						class="w-full accent-red-500"
 					/>
 					<div class="mt-1 flex justify-between text-xs text-zinc-500">
-						<span>-100 (압축)</span>
-						<span>100 (인장)</span>
+						<span>Compression</span>
+						<span>Tension</span>
 					</div>
 				</div>
 
 				<div>
 					<div class="mb-2 flex items-center justify-between">
 						<label for="sigmay" class="block font-medium text-zinc-700"
-							>$\sigma_y$ (수직 응력 Y)</label
+							>{@html k('\\sigma_y')} (Normal Y)</label
 						>
 						<span class="text-sm font-semibold text-red-500">{sigma_y} MPa</span>
 					</div>
@@ -182,15 +179,15 @@
 						class="w-full accent-red-500"
 					/>
 					<div class="mt-1 flex justify-between text-xs text-zinc-500">
-						<span>-100 (압축)</span>
-						<span>100 (인장)</span>
+						<span>Compression</span>
+						<span>Tension</span>
 					</div>
 				</div>
 
 				<div>
 					<div class="mb-2 flex items-center justify-between">
 						<label for="tauxy" class="block font-medium text-zinc-700"
-							>$\tau_{'{'}xy{'}'}$ (전단 응력)</label
+							>{@html k('\\tau_{xy}')} (Shear)</label
 						>
 						<span class="text-sm font-semibold text-blue-500">{tau_xy} MPa</span>
 					</div>
@@ -202,16 +199,12 @@
 						bind:value={tau_xy}
 						class="w-full accent-blue-500"
 					/>
-					<div class="mt-1 flex justify-between text-xs text-zinc-500">
-						<span>-100</span>
-						<span>100</span>
-					</div>
 				</div>
 			</div>
 
 			<div class="mt-12 rounded-xl border border-zinc-100 bg-zinc-50 p-6">
 				<h3 class="mb-4 text-sm font-semibold tracking-wider text-zinc-500 uppercase">
-					Stress Tensor Matrix ($\tau_{'{'}ij{'}'}$)
+					Stress Tensor Matrix ({@html k('\\tau_{ij}')})
 				</h3>
 				<div class="flex items-center justify-center font-mono text-2xl text-zinc-800">
 					<span class="mr-2">[</span>
@@ -234,16 +227,82 @@
 		<div
 			class="flex flex-col items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50 p-8 shadow-inner"
 		>
-			<h3 class="mb-4 text-lg font-bold text-zinc-700">미소 요소 시각화</h3>
+			<h3 class="mb-4 text-lg font-bold text-zinc-700">Micro-Element Visualization</h3>
 			<svg bind:this={svgElement} {width} {height} class="overflow-visible"></svg>
 			<div class="mt-6 flex gap-4 text-sm">
 				<div class="flex items-center">
-					<span class="mr-2 h-3 w-3 rounded-full bg-red-500"></span>수직 응력 (Normal)
+					<span class="mr-2 h-3 w-3 rounded-full bg-red-500"></span>Normal Stress ({@html k(
+						'\\sigma'
+					)})
 				</div>
 				<div class="flex items-center">
-					<span class="mr-2 h-3 w-3 rounded-full bg-blue-500"></span>전단 응력 (Shear)
+					<span class="mr-2 h-3 w-3 rounded-full bg-blue-500"></span>Shear Stress ({@html k(
+						'\\tau'
+					)})
 				</div>
 			</div>
+		</div>
+	</div>
+
+	<!-- Bottom Row: Physical Insights & Glossary -->
+	<div class="mt-8 rounded-2xl border-l-[6px] border-indigo-500 bg-indigo-50/50 p-8 shadow-sm">
+		<h2 class="mb-6 flex items-center gap-3 text-2xl font-bold text-indigo-900">
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				class="h-8 w-8 text-indigo-600"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+			>
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+				/>
+			</svg>
+			Physical Insights
+		</h2>
+
+		<div class="prose prose-sm max-w-none text-indigo-900/80 prose-indigo">
+			<p>
+				In continuum mechanics, the internal state of stress at any point within a solid object can
+				be fully described by a concept called the <strong>Stress Tensor</strong> ({@html k(
+					'\\tau_{ij}'
+				)}). To visualize this, we imagine an infinitesimally small coordinate-aligned cube (or
+				square in 2D) centered exactly at that point.
+			</p>
+
+			<h4>Symbol Glossary</h4>
+			<ul>
+				<li>
+					{@html k('\\sigma_x, \\sigma_y')} : <strong>Normal Stresses</strong>. Forces acting
+					perpendicular to the faces. A positive value induces tension (pulling out), while a
+					negative value induces compression (pushing in).
+				</li>
+				<li>
+					{@html k('\\tau_{xy}')} : <strong>Shear Stress</strong>. Forces acting parallel to the
+					faces. It represents the intensity of internal forces trying to slide structural layers
+					past one another.
+				</li>
+			</ul>
+
+			<h4>Key Principles Observed</h4>
+			<p>
+				<strong>1. Internal Force Equilibrium:</strong> Notice that when you increase {@html k(
+					'\\sigma_x'
+				)}, arrows emerge symmetrically on both the left and right faces. The sum of forces ({@html k(
+					'\\sum F = 0'
+				)}) and moments ({@html k('\\sum M = 0')}) must be zero holding this point in static
+				equilibrium.
+			</p>
+			<p>
+				<strong>2. Equality of Cross Shears:</strong> The shear stress on the right vertical face ({@html k(
+					'\\tau_{xy}'
+				)}) must be identically matched by the top horizontal face ({@html k('\\tau_{yx}')}) to
+				prevent the element from rotating (zero net moment). Thus, the standard 2D stress tensor
+				matrix is always symmetric.
+			</p>
 		</div>
 	</div>
 </div>
