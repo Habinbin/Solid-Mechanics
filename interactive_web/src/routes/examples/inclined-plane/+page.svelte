@@ -295,7 +295,7 @@
 			</div>
 
 			<div class="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-6">
-				<h4 class="mb-4 text-xs font-bold tracking-wider text-zinc-500 uppercase">
+				<h4 class="mb-4 text-sm font-bold tracking-wider text-zinc-500 uppercase">
 					Plane Transformations
 				</h4>
 				<ul class="space-y-4 font-mono text-sm text-zinc-800">

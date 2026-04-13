@@ -24,8 +24,18 @@
 	let sigma_xp = $derived(p_x * Math.cos(theta_rad) + p_y * Math.sin(theta_rad));
 	let tau_xpyp = $derived(p_y * Math.cos(theta_rad) - p_x * Math.sin(theta_rad));
 
+	function getSliderStyle(val: number, min: number, max: number, color: string) {
+		const span = max - min;
+		const zeroPct = ((0 - min) / span) * 100;
+		const valPct = ((val - min) / span) * 100;
+		const start = Math.min(zeroPct, valPct);
+		const end = Math.max(zeroPct, valPct);
+		return `--track-bg: linear-gradient(to right, #e4e4e7 0%, #e4e4e7 ${start}%, ${color} ${start}%, ${color} ${end}%, #e4e4e7 ${end}%, #e4e4e7 100%); --thumb-color: ${color};`;
+	}
+
 	let svgElement = $state<SVGSVGElement>();
 	let projSvgElement = $state<SVGSVGElement>();
+	let chartSvgElement = $state<SVGSVGElement>();
 
 	const width = 600;
 	const height = 500;
@@ -167,12 +177,13 @@
 
 		// Theta Angle Arc
 		const arcRadius = 40;
-		if (theta_deg > 2) {
+		if (Math.abs(theta_deg) > 2) {
 			const arcX = arcRadius * Math.cos(theta_rad);
 			const arcY = -arcRadius * Math.sin(theta_rad);
+			const sweepFlag = theta_deg < 0 ? 1 : 0;
 
 			g.append('path')
-				.attr('d', `M ${arcRadius} 0 A ${arcRadius} ${arcRadius} 0 0 0 ${arcX} ${arcY}`)
+				.attr('d', `M ${arcRadius} 0 A ${arcRadius} ${arcRadius} 0 0 ${sweepFlag} ${arcX} ${arcY}`)
 				.attr('fill', 'none')
 				.attr('stroke', '#9333ea')
 				.attr('stroke-width', 2);
@@ -248,6 +259,27 @@
 			.attr('font-weight', 'bold')
 			.text("x'");
 
+		// Theta Angle Arc
+		const arcRadius = 40;
+		if (theta_deg > 2) {
+			const arcX = arcRadius * Math.cos(theta_rad);
+			const arcY = -arcRadius * Math.sin(theta_rad);
+
+			g.append('path')
+				.attr('d', `M ${arcRadius} 0 A ${arcRadius} ${arcRadius} 0 0 0 ${arcX} ${arcY}`)
+				.attr('fill', 'none')
+				.attr('stroke', '#9333ea')
+				.attr('stroke-width', 2);
+
+			g.append('text')
+				.attr('x', (arcRadius + 15) * Math.cos(theta_rad / 2))
+				.attr('y', -(arcRadius + 15) * Math.sin(theta_rad / 2) + 5)
+				.attr('fill', '#9333ea')
+				.attr('font-size', '14px')
+				.attr('font-weight', 'bold')
+				.text('θ');
+		}
+
 		const scale = 1.5;
 		const vx = p_x * scale;
 		const vy = p_y * scale;
@@ -318,12 +350,333 @@
 		}
 	}
 
+	function drawChart() {
+		if (!chartSvgElement) return;
+		const svg = d3.select(chartSvgElement);
+		svg.selectAll('*').remove();
+
+		const margin = { top: 40, right: 40, bottom: 50, left: 60 };
+		const w = 800 - margin.left - margin.right;
+		const h = 400 - margin.top - margin.bottom;
+
+		const g = svg.append('g').attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+		// Calculations
+		const C = (sigma_x + sigma_y) / 2;
+		const R = Math.sqrt(Math.pow((sigma_x - sigma_y) / 2, 2) + Math.pow(tau_xy, 2));
+
+		const sig_max = C + R;
+		const sig_min = C - R;
+		const tau_max = R;
+		const tau_min = -R;
+
+		// Principal angles (rad), kept between -Pi/2 and Pi/2
+		let theta_p1 = Math.atan2(2 * tau_xy, sigma_x - sigma_y) / 2;
+		let theta_p2 = theta_p1 > 0 ? theta_p1 - Math.PI / 2 : theta_p1 + Math.PI / 2;
+
+		let theta_s1 = theta_p1 - Math.PI / 4;
+		if (theta_s1 < -Math.PI / 2) theta_s1 += Math.PI;
+		let theta_s2 = theta_s1 > 0 ? theta_s1 - Math.PI / 2 : theta_s1 + Math.PI / 2;
+
+		// Data generation (-90 to 90)
+		const data = [];
+		for (let i = -90; i <= 90; i++) {
+			const th = (i * Math.PI) / 180;
+			const sig = C + ((sigma_x - sigma_y) / 2) * Math.cos(2 * th) + tau_xy * Math.sin(2 * th);
+			const tau = -((sigma_x - sigma_y) / 2) * Math.sin(2 * th) + tau_xy * Math.cos(2 * th);
+			data.push({ theta: i, sig, tau, thRad: th });
+		}
+
+		// Scales
+		const max_y = Math.max(Math.abs(sig_max), Math.abs(sig_min), Math.abs(tau_max), 1);
+		const yDomain = [-max_y * 1.2, max_y * 1.2];
+
+		const xScale = d3.scaleLinear().domain([-90, 90]).range([0, w]);
+		const yScale = d3.scaleLinear().domain(yDomain).range([h, 0]);
+
+		// Axes
+		const xAxis = d3
+			.axisBottom(xScale)
+			.tickValues([-90, -45, 0, 45, 90])
+			.tickFormat((d) => d + '°');
+		const yAxis = d3.axisLeft(yScale).ticks(7);
+
+		g.append('g')
+			.attr('transform', `translate(0, ${h / 2})`)
+			.call(
+				d3
+					.axisBottom(xScale)
+					.tickFormat(null as any)
+					.ticks(0)
+			)
+			.attr('color', '#e4e4e7');
+		g.append('g').attr('transform', `translate(0, ${h})`).call(xAxis).attr('font-size', '14px');
+		g.append('g').call(yAxis).attr('font-size', '14px');
+
+		g.append('text')
+			.attr('x', w / 2)
+			.attr('y', h + 40)
+			.attr('text-anchor', 'middle')
+			.text('Rotation Angle θ (degrees)')
+			.attr('fill', '#52525b')
+			.attr('font-weight', '500');
+		g.append('text')
+			.attr('transform', 'rotate(-90)')
+			.attr('x', -h / 2)
+			.attr('y', -45)
+			.attr('text-anchor', 'middle')
+			.text('Stress (MPa)')
+			.attr('fill', '#52525b')
+			.attr('font-weight', '500');
+
+		// Lines
+		const lineSig = d3
+			.line<any>()
+			.x((d) => xScale(d.theta))
+			.y((d) => yScale(d.sig))
+			.curve(d3.curveMonotoneX);
+		const lineTau = d3
+			.line<any>()
+			.x((d) => xScale(d.theta))
+			.y((d) => yScale(d.tau))
+			.curve(d3.curveMonotoneX);
+
+		g.append('path')
+			.datum(data)
+			.attr('fill', 'none')
+			.attr('stroke', '#ef4444')
+			.attr('stroke-width', 3)
+			.attr('stroke-opacity', 0.8)
+			.attr('d', lineSig);
+		g.append('path')
+			.datum(data)
+			.attr('fill', 'none')
+			.attr('stroke', '#3b82f6')
+			.attr('stroke-width', 3)
+			.attr('stroke-opacity', 0.8)
+			.attr('d', lineTau);
+
+		// Current Theta Tracking (SYNCED TO SLIDER)
+		const currentThDeg = (theta_rad * 180) / Math.PI;
+		g.append('line')
+			.attr('x1', xScale(currentThDeg))
+			.attr('x2', xScale(currentThDeg))
+			.attr('y1', 0)
+			.attr('y2', h)
+			.attr('stroke', '#9333ea')
+			.attr('stroke-width', 2)
+			.attr('stroke-dasharray', '5,5')
+			.style('pointer-events', 'none');
+		g.append('circle')
+			.attr('cx', xScale(currentThDeg))
+			.attr('cy', yScale(sigma_xp))
+			.attr('r', 6)
+			.attr('fill', '#ef4444')
+			.attr('stroke', '#fff')
+			.attr('stroke-width', 2)
+			.style('pointer-events', 'none');
+		g.append('circle')
+			.attr('cx', xScale(currentThDeg))
+			.attr('cy', yScale(tau_xpyp))
+			.attr('r', 6)
+			.attr('fill', '#3b82f6')
+			.attr('stroke', '#fff')
+			.attr('stroke-width', 2)
+			.style('pointer-events', 'none');
+
+		// Extrema Highlighting
+		const points = [
+			{
+				th: theta_p1,
+				val:
+					C + ((sigma_x - sigma_y) / 2) * Math.cos(2 * theta_p1) + tau_xy * Math.sin(2 * theta_p1),
+				label: 'σ<tspan dy="4" font-size="10px">1</tspan>',
+				c: '#ef4444'
+			},
+			{
+				th: theta_p2,
+				val:
+					C + ((sigma_x - sigma_y) / 2) * Math.cos(2 * theta_p2) + tau_xy * Math.sin(2 * theta_p2),
+				label: 'σ<tspan dy="4" font-size="10px">2</tspan>',
+				c: '#ef4444'
+			},
+			{
+				th: theta_s1,
+				val: -((sigma_x - sigma_y) / 2) * Math.sin(2 * theta_s1) + tau_xy * Math.cos(2 * theta_s1),
+				label: '',
+				c: '#3b82f6'
+			},
+			{
+				th: theta_s2,
+				val: -((sigma_x - sigma_y) / 2) * Math.sin(2 * theta_s2) + tau_xy * Math.cos(2 * theta_s2),
+				label: '',
+				c: '#3b82f6'
+			}
+		];
+
+		points[2].label =
+			points[2].val > 0
+				? 'τ<tspan dy="4" font-size="10px">max</tspan>'
+				: 'τ<tspan dy="4" font-size="10px">min</tspan>';
+		points[3].label =
+			points[3].val > 0
+				? 'τ<tspan dy="4" font-size="10px">max</tspan>'
+				: 'τ<tspan dy="4" font-size="10px">min</tspan>';
+
+		points.forEach((p) => {
+			const thDeg = (p.th * 180) / Math.PI;
+			g.append('circle')
+				.attr('cx', xScale(thDeg))
+				.attr('cy', yScale(p.val))
+				.attr('r', 5)
+				.attr('fill', p.c);
+			g.append('text')
+				.attr('x', xScale(thDeg))
+				.attr('y', yScale(p.val) - 10)
+				.attr('text-anchor', 'middle')
+				.html(p.label)
+				.attr('fill', p.c)
+				.attr('font-size', '14px')
+				.attr('font-weight', 'bold');
+			g.append('line')
+				.attr('x1', xScale(thDeg))
+				.attr('x2', xScale(thDeg))
+				.attr('y1', Math.min(yScale(p.val), yScale(0)))
+				.attr('y2', Math.max(yScale(p.val), yScale(0)))
+				.attr('stroke', p.c)
+				.attr('stroke-dasharray', '3,3')
+				.attr('opacity', 0.5);
+		});
+
+		// Hover interaction tracker
+		const focus = g.append('g').style('display', 'none');
+		focus
+			.append('line')
+			.attr('y1', 0)
+			.attr('y2', h)
+			.attr('stroke', '#71717a')
+			.attr('stroke-dasharray', '4,4');
+
+		const focusSig = focus.append('circle').attr('r', 5).attr('fill', '#ef4444');
+		const focusTau = focus.append('circle').attr('r', 5).attr('fill', '#3b82f6');
+
+		const tooltip = g.append('g').style('display', 'none');
+		const tooltipRect = tooltip
+			.append('rect')
+			.attr('fill', 'rgba(255, 255, 255, 0.95)')
+			.attr('stroke', '#d4d4d8')
+			.attr('width', 130)
+			.attr('height', 60)
+			.attr('rx', 4);
+		const tooltipTh = tooltip
+			.append('text')
+			.attr('x', 10)
+			.attr('y', 20)
+			.attr('font-size', '14px')
+			.attr('font-weight', 'bold');
+		const tooltipSig = tooltip
+			.append('text')
+			.attr('x', 10)
+			.attr('y', 36)
+			.attr('font-size', '14px')
+			.attr('fill', '#ef4444')
+			.attr('font-weight', 'bold');
+		const tooltipTau = tooltip
+			.append('text')
+			.attr('x', 10)
+			.attr('y', 52)
+			.attr('font-size', '14px')
+			.attr('fill', '#3b82f6')
+			.attr('font-weight', 'bold');
+
+		g.append('rect')
+			.attr('width', w)
+			.attr('height', h)
+			.attr('fill', 'transparent')
+			.style('cursor', 'crosshair')
+			.on('mouseover', () => {
+				focus.style('display', null);
+				tooltip.style('display', null);
+			})
+			.on('mouseout', () => {
+				focus.style('display', 'none');
+				tooltip.style('display', 'none');
+			})
+			.on('mousemove', (event) => {
+				const [xm] = d3.pointer(event);
+				let thDeg = Math.round(xScale.invert(xm));
+				thDeg = Math.max(0, Math.min(180, thDeg));
+
+				const th = (thDeg * Math.PI) / 180;
+				const sig = C + ((sigma_x - sigma_y) / 2) * Math.cos(2 * th) + tau_xy * Math.sin(2 * th);
+				const tau = -((sigma_x - sigma_y) / 2) * Math.sin(2 * th) + tau_xy * Math.cos(2 * th);
+
+				focus.attr('transform', `translate(${xScale(thDeg)}, 0)`);
+				focusSig.attr('cy', yScale(sig));
+				focusTau.attr('cy', yScale(tau));
+
+				let tooltipX = xScale(thDeg) + 15;
+				if (tooltipX + 130 > w) tooltipX = xScale(thDeg) - 145;
+
+				tooltip.attr(
+					'transform',
+					`translate(${tooltipX}, ${Math.min(yScale(sig), yScale(tau), h - 60) - 10})`
+				);
+				tooltipTh.text(`θ = ${thDeg}°`);
+				tooltipSig.text(`σ = ${sig.toFixed(1)} MPa`);
+				tooltipTau.text(`τ = ${tau.toFixed(1)} MPa`);
+			});
+
+		// Legend
+		const legend = g.append('g').attr('transform', `translate(${w - 150}, 10)`);
+		legend
+			.append('rect')
+			.attr('width', 140)
+			.attr('height', 50)
+			.attr('fill', 'rgba(255,255,255,0.8)')
+			.attr('stroke', '#e4e4e7')
+			.attr('rx', 4);
+		legend
+			.append('line')
+			.attr('x1', 10)
+			.attr('x2', 40)
+			.attr('y1', 15)
+			.attr('y2', 15)
+			.attr('stroke', '#ef4444')
+			.attr('stroke-width', 3);
+		legend
+			.append('text')
+			.attr('x', 50)
+			.attr('y', 19)
+			.attr('font-size', '14px')
+			.attr('fill', '#52525b')
+			.text('Normal Stress (σ)');
+		legend
+			.append('line')
+			.attr('x1', 10)
+			.attr('x2', 40)
+			.attr('y1', 35)
+			.attr('y2', 35)
+			.attr('stroke', '#3b82f6')
+			.attr('stroke-width', 3);
+		legend
+			.append('text')
+			.attr('x', 50)
+			.attr('y', 39)
+			.attr('font-size', '14px')
+			.attr('fill', '#52525b')
+			.text('Shear Stress (τ)');
+	}
+
 	$effect(() => {
 		if (svgElement && sigma_x !== undefined) {
 			drawElement();
 		}
 		if (projSvgElement && sigma_x !== undefined) {
 			drawProjection();
+		}
+		if (chartSvgElement && sigma_x !== undefined) {
+			drawChart();
 		}
 	});
 </script>
@@ -402,84 +755,94 @@
 
 	<div class="grid grid-cols-1 gap-12 lg:grid-cols-2">
 		<!-- Left: Controls & Math -->
-		<div class="space-y-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-			<h2 class="text-xl font-bold text-zinc-900">Stress State Parameters</h2>
+		<div class="space-y-6">
+			<div class="space-y-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
+				<h2 class="text-xl font-bold text-zinc-900">Stress State Parameters</h2>
 
-			<div>
-				<label for="sx" class="block text-sm font-medium text-zinc-700"
-					>{@html k('\\sigma_x')} = {sigma_x} MPa</label
-				>
-				<input
-					id="sx"
-					type="range"
-					min="-100"
-					max="100"
-					bind:value={sigma_x}
-					class="mt-2 w-full accent-red-500"
-				/>
-			</div>
-			<div>
-				<label for="sy" class="block text-sm font-medium text-zinc-700"
-					>{@html k('\\sigma_y')} = {sigma_y} MPa</label
-				>
-				<input
-					id="sy"
-					type="range"
-					min="-100"
-					max="100"
-					bind:value={sigma_y}
-					class="mt-2 w-full accent-red-500"
-				/>
-			</div>
-			<div>
-				<label for="txy" class="block text-sm font-medium text-zinc-700"
-					>{@html k('\\tau_{xy}')} = {tau_xy} MPa</label
-				>
-				<input
-					id="txy"
-					type="range"
-					min="-100"
-					max="100"
-					bind:value={tau_xy}
-					class="mt-2 w-full accent-blue-500"
-				/>
-			</div>
-			<div class="border-t border-zinc-100 pt-4">
-				<label for="theta" class="block text-sm font-bold font-medium text-purple-600"
-					>Cut Angle {@html k('\\theta')} = {theta_deg}°</label
-				>
-				<input
-					id="theta"
-					type="range"
-					min="0"
-					max="90"
-					bind:value={theta_deg}
-					class="mt-2 w-full accent-purple-600"
-				/>
+				<div>
+					<label for="sx" class="block text-sm font-medium text-zinc-700"
+						>{@html k('\\sigma_x')} = {sigma_x} MPa</label
+					>
+					<input
+						id="sx"
+						type="range"
+						min="-100"
+						max="100"
+						bind:value={sigma_x}
+						class="bidirectional mt-2 w-full"
+						style={getSliderStyle(sigma_x, -100, 100, '#ef4444')}
+					/>
+				</div>
+				<div>
+					<label for="sy" class="block text-sm font-medium text-zinc-700"
+						>{@html k('\\sigma_y')} = {sigma_y} MPa</label
+					>
+					<input
+						id="sy"
+						type="range"
+						min="-100"
+						max="100"
+						bind:value={sigma_y}
+						class="bidirectional mt-2 w-full"
+						style={getSliderStyle(sigma_y, -100, 100, '#ef4444')}
+					/>
+				</div>
+				<div>
+					<label for="txy" class="block text-sm font-medium text-zinc-700"
+						>{@html k('\\tau_{xy}')} = {tau_xy} MPa</label
+					>
+					<input
+						id="txy"
+						type="range"
+						min="-100"
+						max="100"
+						bind:value={tau_xy}
+						class="bidirectional mt-2 w-full"
+						style={getSliderStyle(tau_xy, -100, 100, '#3b82f6')}
+					/>
+				</div>
 			</div>
 
-			<div class="mt-6 rounded-xl border border-zinc-200 bg-zinc-50 p-6">
-				<h3 class="mb-4 text-sm font-bold tracking-wider text-zinc-500 uppercase">
-					Cauchy's Project Equations
-				</h3>
-				<ul class="space-y-4 font-mono text-sm text-zinc-800">
-					<li class="flex flex-col">
-						<span>{@html k('p_x = \\sigma_x \\cos\\theta + \\tau_{xy} \\sin\\theta')}</span>
-						<span class="text-right font-bold text-zinc-500">= {p_x.toFixed(2)} MPa</span>
-					</li>
-					<li class="flex flex-col">
-						<span>{@html k('p_y = \\tau_{xy} \\cos\\theta + \\sigma_y \\sin\\theta')}</span>
-						<span class="text-right font-bold text-zinc-500">= {p_y.toFixed(2)} MPa</span>
-					</li>
-					<li class="flex flex-col border-t border-zinc-200 pt-2">
-						<span>{@html k("\\sigma_{x'} = p_x \\cos\\theta + p_y \\sin\\theta")}</span>
-						<span class="text-right font-bold text-purple-600">= {sigma_xp.toFixed(2)} MPa</span>
-					</li>
-					<li class="flex flex-col">
-						<span>{@html k("\\tau_{x'y'} = p_y \\cos\\theta - p_x \\sin\\theta")}</span>
-						<span class="text-right font-bold text-blue-600">= {tau_xpyp.toFixed(2)} MPa</span>
-					</li>
-				</ul>
+			<div class="space-y-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
+				<h2 class="text-xl font-bold text-zinc-900">Transformation Angle</h2>
+				<div>
+					<label for="theta" class="block text-sm font-bold font-medium text-purple-600"
+						>Cut Angle {@html k('\\theta')} = {theta_deg}°</label
+					>
+					<input
+						id="theta"
+						type="range"
+						min="-90"
+						max="90"
+						bind:value={theta_deg}
+						class="bidirectional mt-2 w-full"
+						style={getSliderStyle(theta_deg, -90, 90, '#9333ea')}
+					/>
+				</div>
+
+				<div class="rounded-xl border border-zinc-200 bg-zinc-50 p-6">
+					<h3 class="mb-4 text-sm font-bold tracking-wider text-zinc-500 uppercase">
+						Cauchy's Project Equations
+					</h3>
+					<ul class="space-y-4 font-mono text-sm text-zinc-800">
+						<li class="flex flex-col">
+							<span>{@html k('p_x = \\sigma_x \\cos\\theta + \\tau_{xy} \\sin\\theta')}</span>
+							<span class="text-right font-bold text-zinc-500">= {p_x.toFixed(2)} MPa</span>
+						</li>
+						<li class="flex flex-col">
+							<span>{@html k('p_y = \\tau_{xy} \\cos\\theta + \\sigma_y \\sin\\theta')}</span>
+							<span class="text-right font-bold text-zinc-500">= {p_y.toFixed(2)} MPa</span>
+						</li>
+						<li class="flex flex-col border-t border-zinc-200 pt-2">
+							<span>{@html k("\\sigma_{x'} = p_x \\cos\\theta + p_y \\sin\\theta")}</span>
+							<span class="text-right font-bold text-purple-600">= {sigma_xp.toFixed(2)} MPa</span>
+						</li>
+						<li class="flex flex-col">
+							<span>{@html k("\\tau_{x'y'} = p_y \\cos\\theta - p_x \\sin\\theta")}</span>
+							<span class="text-right font-bold text-blue-600">= {tau_xpyp.toFixed(2)} MPa</span>
+						</li>
+					</ul>
+				</div>
 			</div>
 		</div>
 
@@ -489,7 +852,7 @@
 		>
 			<svg bind:this={svgElement} {width} {height} class="overflow-visible"></svg>
 			<div
-				class="absolute bottom-4 left-4 space-y-2 rounded-lg border border-zinc-200 bg-white/80 p-3 text-xs backdrop-blur-sm"
+				class="absolute bottom-4 left-4 space-y-2 rounded-lg border border-zinc-200 bg-white/80 p-3 text-sm backdrop-blur-sm"
 			>
 				<div class="flex items-center gap-2">
 					<span class="h-3 w-3 rounded-sm bg-red-500"></span> Normal Stresses on standard face
@@ -540,4 +903,83 @@
 			</ul>
 		</div>
 	</div>
+
+	<!-- Transformation Line Chart -->
+	<div class="mt-12 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
+		<h2 class="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight text-zinc-900">
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				class="h-6 w-6 text-blue-600"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+			>
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					stroke-width="2"
+					d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+				/>
+			</svg>
+			Stress Transformation Plot
+		</h2>
+		<p class="mb-8 text-lg text-zinc-600">
+			This chart continuously plots normal ({@html k("\\sigma_{x'}")}) and shear ({@html k(
+				"\\tau_{x'y'}"
+			)}) stresses as the element is rotated up to {@html k('180^\\circ')} ({@html k('\\pi')}). The
+			peaks and valleys explicitly mark the <strong>Principal Stresses</strong> and
+			<strong>Maximum In-Plane Shear Stress</strong>.
+			<em
+				>Hover anywhere over the graph to read exact mathematical values. The <span
+					class="font-bold text-purple-600">purple dashed line</span
+				> autonomously tracks your Cut Angle (θ) slider.</em
+			>
+		</p>
+		<div class="flex items-center justify-center overflow-x-auto">
+			<svg bind:this={chartSvgElement} width="800" height="400" class="overflow-visible select-none"
+			></svg>
+		</div>
+	</div>
 </div>
+
+<style>
+	input[type='range'].bidirectional {
+		-webkit-appearance: none;
+		appearance: none;
+		background: transparent;
+	}
+	input[type='range'].bidirectional::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		height: 16px;
+		width: 16px;
+		border-radius: 50%;
+		background: var(--thumb-color, #3b82f6);
+		cursor: pointer;
+		margin-top: -6px;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	}
+	input[type='range'].bidirectional::-webkit-slider-runnable-track {
+		width: 100%;
+		height: 4px;
+		cursor: pointer;
+		border-radius: 2px;
+		background: var(--track-bg, #e4e4e7);
+	}
+	input[type='range'].bidirectional::-moz-range-thumb {
+		height: 16px;
+		width: 16px;
+		border-radius: 50%;
+		background: var(--thumb-color, #3b82f6);
+		cursor: pointer;
+		border: none;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	}
+	input[type='range'].bidirectional::-moz-range-track {
+		width: 100%;
+		height: 4px;
+		cursor: pointer;
+		border-radius: 2px;
+		background: var(--track-bg, #e4e4e7);
+	}
+</style>

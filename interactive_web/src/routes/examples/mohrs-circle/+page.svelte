@@ -30,6 +30,10 @@
 		-((sigma_x - sigma_y) / 2) * Math.sin(2 * theta_rad) + tau_xy * Math.cos(2 * theta_rad)
 	);
 
+	// Derived Calculations for Physical Wedge Traction Vectors
+	let p_x = $derived(sigma_x * Math.cos(theta_rad) + tau_xy * Math.sin(theta_rad));
+	let p_y = $derived(tau_xy * Math.cos(theta_rad) + sigma_y * Math.sin(theta_rad));
+
 	// Mohr's circle parameters
 	let center_c = $derived((sigma_x + sigma_y) / 2);
 	let radius_r = $derived(Math.sqrt(Math.pow((sigma_x - sigma_y) / 2, 2) + Math.pow(tau_xy, 2)));
@@ -37,6 +41,8 @@
 	let sigma_2 = $derived(center_c - radius_r);
 
 	let svgElement = $state<SVGSVGElement>();
+	let wedgeSvgElement = $state<SVGSVGElement>();
+
 	const width = 450;
 	const height = 400;
 	const margin = { top: 30, right: 30, bottom: 50, left: 50 };
@@ -133,14 +139,153 @@
 			.attr('x', xScale(px) + 10)
 			.attr('y', yScale(py) - 10)
 			.attr('fill', '#ef4444')
-			.attr('font-size', '12px')
+			.attr('font-size', '14px')
 			.attr('font-weight', 'bold')
 			.text(`(${px.toFixed(1)}, ${py.toFixed(1)})`);
+	}
+
+	function createMarker(defs: any, id: string, color: string) {
+		defs
+			.append('marker')
+			.attr('id', id)
+			.attr('viewBox', '0 -5 10 10')
+			.attr('refX', 8)
+			.attr('refY', 0)
+			.attr('markerWidth', 6)
+			.attr('markerHeight', 6)
+			.attr('orient', 'auto')
+			.append('path')
+			.attr('d', 'M0,-5L10,0L0,5')
+			.attr('fill', color);
+	}
+
+	function drawWedge() {
+		if (!wedgeSvgElement) return;
+		const svg = d3.select(wedgeSvgElement);
+		svg.selectAll('*').remove();
+
+		const w_width = 250;
+		const w_height = 250;
+		const L = 120; // Hypotenuse physical length
+		const cx = w_width / 2;
+		const cy = w_height / 2;
+
+		const defs = svg.append('defs');
+		createMarker(defs, 'arrow-red', '#ef4444');
+		createMarker(defs, 'arrow-blue', '#3b82f6');
+		createMarker(defs, 'arrow-purple', '#8b5cf6');
+		createMarker(defs, 'arrow-dark', '#18181b');
+
+		const g = svg.append('g').attr('transform', `translate(${cx}, ${cy})`);
+
+		const A_math = [-(L / 2) * Math.sin(theta_rad), (L / 2) * Math.cos(theta_rad)];
+		const B_math = [(L / 2) * Math.sin(theta_rad), -(L / 2) * Math.cos(theta_rad)];
+		const Q_math = [-(L / 2) * Math.sin(theta_rad), -(L / 2) * Math.cos(theta_rad)];
+
+		g.append('polygon')
+			.attr(
+				'points',
+				`${A_math[0]},${-A_math[1]} ${B_math[0]},${-B_math[1]} ${Q_math[0]},${-Q_math[1]}`
+			)
+			.attr('fill', '#f4f4f5')
+			.attr('stroke', '#52525b')
+			.attr('stroke-width', 2);
+
+		const drawVector = (
+			ox: number,
+			oy: number,
+			vx: number,
+			vy: number,
+			colorId: string,
+			label: string,
+			offset: [number, number]
+		) => {
+			const mag = Math.sqrt(vx * vx + vy * vy);
+			if (mag < 1) return;
+			const scale = 0.5;
+
+			const c_hex =
+				colorId === 'arrow-red'
+					? '#ef4444'
+					: colorId === 'arrow-blue'
+						? '#3b82f6'
+						: colorId === 'arrow-purple'
+							? '#8b5cf6'
+							: '#18181b';
+
+			g.append('line')
+				.attr('x1', ox)
+				.attr('y1', -oy)
+				.attr('x2', ox + vx * scale)
+				.attr('y2', -(oy + vy * scale))
+				.attr('stroke', c_hex)
+				.attr('stroke-width', 2)
+				.attr('marker-end', `url(#${colorId})`);
+
+			g.append('text')
+				.attr('x', ox + vx * scale + offset[0])
+				.attr('y', -(oy + vy * scale) - offset[1])
+				.attr('fill', c_hex)
+				.attr('font-size', '14px')
+				.attr('font-weight', 'bold')
+				.text(label);
+		};
+
+		const midAQ = [Q_math[0], (A_math[1] + Q_math[1]) / 2];
+		drawVector(midAQ[0], midAQ[1], -sigma_x, 0, 'arrow-red', 'σx', [-20, -5]);
+		drawVector(midAQ[0], midAQ[1], 0, -tau_xy, 'arrow-blue', 'τxy', [-20, 10]);
+
+		const midQB = [(Q_math[0] + B_math[0]) / 2, Q_math[1]];
+		drawVector(midQB[0], midQB[1], 0, -sigma_y, 'arrow-red', 'σy', [10, -15]);
+		drawVector(midQB[0], midQB[1], -tau_xy, 0, 'arrow-blue', 'τxy', [20, -5]);
+
+		const xp_dir = [Math.cos(theta_rad), Math.sin(theta_rad)];
+		const yp_dir = [-Math.sin(theta_rad), Math.cos(theta_rad)];
+
+		// Draw total traction p
+		drawVector(0, 0, p_x, p_y, 'arrow-dark', 'p', [15, 15]);
+
+		const v_sig_x = sigma_x_prime * xp_dir[0];
+		const v_sig_y = sigma_x_prime * xp_dir[1];
+		const v_tau_x = tau_xy_prime * yp_dir[0];
+		const v_tau_y = tau_xy_prime * yp_dir[1];
+
+		drawVector(0, 0, v_sig_x, v_sig_y, 'arrow-purple', "σx'", [10 * xp_dir[0], 10 * xp_dir[1]]);
+		drawVector(0, 0, v_tau_x, v_tau_y, 'arrow-blue', "τx'y'", [10 * yp_dir[0], 10 * yp_dir[1]]);
+
+		g.append('line')
+			.attr('x1', 0)
+			.attr('y1', 0)
+			.attr('x2', 80 * xp_dir[0])
+			.attr('y2', -80 * xp_dir[1])
+			.attr('stroke', '#a1a1aa')
+			.attr('stroke-dasharray', '4');
+
+		if (theta_deg > 2) {
+			const arcRadius = 30;
+			const arcX = arcRadius * Math.cos(theta_rad);
+			const arcY = -arcRadius * Math.sin(theta_rad);
+			g.append('path')
+				.attr('d', `M ${arcRadius} 0 A ${arcRadius} ${arcRadius} 0 0 0 ${arcX} ${arcY}`)
+				.attr('fill', 'none')
+				.attr('stroke', '#9333ea')
+				.attr('stroke-width', 2);
+			g.append('text')
+				.attr('x', (arcRadius + 12) * Math.cos(theta_rad / 2))
+				.attr('y', -(arcRadius + 12) * Math.sin(theta_rad / 2) + 5)
+				.attr('fill', '#9333ea')
+				.attr('font-size', '14px')
+				.attr('font-weight', 'bold')
+				.text('θ');
+		}
 	}
 
 	$effect(() => {
 		if (svgElement && center_c !== undefined && radius_r !== undefined && theta_rad !== undefined) {
 			drawCircle();
+		}
+		if (wedgeSvgElement && sigma_x !== undefined) {
+			drawWedge();
 		}
 	});
 </script>
@@ -228,7 +373,7 @@
 			</div>
 
 			<div class="mt-8 rounded-xl border border-red-100 bg-red-50 p-4">
-				<h4 class="mb-2 text-xs font-bold tracking-wider text-red-800 uppercase">
+				<h4 class="mb-2 text-sm font-bold tracking-wider text-red-800 uppercase">
 					Transformed Equivalent
 				</h4>
 				<ul class="space-y-1 font-mono text-sm text-red-900">
@@ -239,7 +384,7 @@
 			</div>
 
 			<div class="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-				<h4 class="mb-2 text-xs font-bold tracking-wider text-zinc-500 uppercase">
+				<h4 class="mb-2 text-sm font-bold tracking-wider text-zinc-500 uppercase">
 					Principal Stresses
 				</h4>
 				<ul class="space-y-1 font-mono text-sm text-zinc-800">
@@ -254,11 +399,22 @@
 		<div
 			class="flex flex-col items-center justify-center rounded-2xl border border-zinc-200 bg-white p-8 shadow-inner"
 		>
-			<svg bind:this={svgElement} {width} {height} class="overflow-visible"></svg>
+			<svg bind:this={svgElement} {width} {height} class="overflow-visible select-none"></svg>
 			<p class="mt-4 text-center text-sm text-zinc-400">
 				The circular locus represents all possible stress states for any rotation {@html k(
 					'\\theta'
 				)}.
+			</p>
+
+			<hr class="my-8 w-full border-zinc-100" />
+
+			<!-- Physical Wedge Visualizer -->
+			<h3 class="mb-2 w-full text-left font-bold text-zinc-800">Physical Wedge Representation</h3>
+			<svg bind:this={wedgeSvgElement} width="250" height="250" class="overflow-visible select-none"
+			></svg>
+			<p class="mt-2 text-center text-sm text-zinc-400">
+				The geometric cut plane physically rotating by {@html k('\\theta')} corresponds logically to the
+				point spinning exactly {@html k('2\\theta')} around Mohr's Circle above.
 			</p>
 		</div>
 	</div>

@@ -113,7 +113,7 @@
 	}
 
 	$effect(() => {
-		if (svgElement) {
+		if (svgElement && sigma_x !== undefined) {
 			drawElement();
 		}
 	});
@@ -157,7 +157,7 @@
 						bind:value={sigma_x}
 						class="w-full accent-red-500"
 					/>
-					<div class="mt-1 flex justify-between text-xs text-zinc-500">
+					<div class="mt-1 flex justify-between text-sm text-zinc-500">
 						<span>Compression</span>
 						<span>Tension</span>
 					</div>
@@ -178,7 +178,7 @@
 						bind:value={sigma_y}
 						class="w-full accent-red-500"
 					/>
-					<div class="mt-1 flex justify-between text-xs text-zinc-500">
+					<div class="mt-1 flex justify-between text-sm text-zinc-500">
 						<span>Compression</span>
 						<span>Tension</span>
 					</div>
